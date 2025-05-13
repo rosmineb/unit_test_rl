@@ -39,8 +39,7 @@ import asyncio
 import multiprocessing
 from multiprocessing import Process, Queue
 from contextlib import contextmanager
-from reward_server.guiding_test_reward import matches_input_format_reward
-from prepare_datasets import check_answer
+
 
 # # Create a logger
 logger = logging.getLogger('rm_server_logger')
@@ -54,6 +53,152 @@ logger.setLevel(logging.DEBUG)
 # logger.addHandler(fh)
 
 # logger.info("Logger initialized and ready to log.")
+
+
+def check_answer(example):
+    # global fn_call_correct
+    # global std_call_correct
+    # global fn_call_total
+    # global std_call_total
+    code = example['gold_standard_solution']
+    code = '\n'.join(line for line in code.split('\n') if '```' not in line)
+
+    import sys
+    import io
+    import contextlib
+
+    test_cases = eval(example['verification_info'])['test_cases']
+    # if test_cases[0]['type'] == 'function_call':
+    #     fn_call_total += 1
+    # else:
+    #     std_call_total += 1
+    if ('sys.exit' in code or "/dev/stdin" in code or "EOFError" in code or "quit()" in code or 
+        "from sys" in code or "open(0)" in code or "map(int,input().split())" in code or 
+        "SystemExit" in code or "exit(" in code or "abort(" in code or "map(int, input().split())" in code or
+        "in input().split()" in code or "from io" in code):
+        # print(f"sys.exit in code")
+        return False
+
+    # print(f"code\n{code}\n")
+
+    for test_case in test_cases:
+
+        if test_case['type'] == 'function_call':
+            # print(f"input\n{test_case['input']}\n")
+            # print(f"expectedoutput\n{test_case['output']}\n")
+            # print('--------------------------------')
+
+            # Execute the code to define the function
+            local_dict = {}
+            # Extract any import statements from the code
+            imports = []
+            code_lines = []
+            for line in code.split('\n'):
+                if line.strip().startswith('import ') or line.strip().startswith('from '):
+                    imports.append(line.strip())
+                else:
+                    code_lines.append(line)
+
+            # Execute imports first in both globals and locals
+            try:
+                # First, execute all imports in both global and local dictionaries
+                for import_stmt in imports:
+                    exec(import_stmt, globals(), local_dict)
+                    # Also make sure the imported modules are in globals()
+                    exec(import_stmt, globals())
+                
+                # Then execute the rest of the code
+                exec('\n'.join(code_lines), globals(), local_dict)
+                
+                # Get all functions defined in the code
+                defined_functions = {name: obj for name, obj in local_dict.items() 
+                                  if not name.startswith('__')}
+                if not defined_functions:
+                    print("No functions were defined in the code")
+                    return False
+            except Exception as e:
+                print(f"Failed to execute code: {e}")
+                return False
+
+            if test_case['fn_name'] in defined_functions:
+                fn_name = test_case['fn_name']
+                # Make sure all necessary imports are available in both contexts
+                try:
+                    # Get the actual function object and call it directly
+                    function_to_call = defined_functions[fn_name]
+                    # Create a context with all defined functions
+                    function_context = {**defined_functions}
+                    # Add the function to globals temporarily to ensure it has access to other functions
+                    for func_name, func_obj in defined_functions.items():
+                        globals()[func_name] = func_obj
+                    result = function_to_call(*test_case['input'])
+                except Exception as e:
+                    return False
+            elif 'Solution' in defined_functions:
+                soln_class = defined_functions['Solution']
+                if isinstance(soln_class, type):  # Check if it's a class
+                    # Create and add the solution instance
+                    local_dict['soln_obj'] = soln_class()
+                else:
+                    # Add the existing instance
+                    local_dict['soln_obj'] = soln_class
+                
+                fn_name = test_case['fn_name']
+                try:
+                    result = eval(f"soln_obj.{fn_name}(*{repr(test_case['input'])})", globals(), local_dict)
+                except Exception as e:
+                    return False
+            else:
+                print(f"Function {test_case['fn_name']} not found in code")
+                return False
+            
+            if result == test_case['output'] or (type(test_case['output']) == list and (result == test_case['output'][0])):
+                # sometimes the output is a list, sometimes it's a string
+                pass
+            else:
+                return False
+        else:
+            try:
+                result = subprocess.run(
+                    ["python", "-c", code],
+                    input=test_case['input'],
+                    capture_output=True,
+                    timeout=10,
+                    text=True  # This makes input and output work as strings
+                )
+            except Exception as e:
+                return False
+
+            for line1, line2 in zip(result.stdout.strip().split("\n"), test_case['output'].strip().split("\n")):
+                try:
+                    if not (line1.strip() == line2.strip() or math.isclose(float(line1.strip()), float(line2.strip()))):
+                        return False
+                except:
+                    return False
+
+    return True
+
+
+def matches_input_format_reward(code_text):
+    tests = {
+        # 'do_not_call_sys_stdin': True,
+        'do_not_call_solve': True,
+        # 'call_input': False,
+        "defined_solve": False,
+    }
+
+    for line in code_text.split('\n'):
+        if 'def solve()' in line:
+            tests['defined_solve'] = True
+        # if 'input()' in line:
+        #     tests['call_input'] = True
+        if 'solve()' in line and 'def solve()' not in line:
+            tests['do_not_call_solve'] = False
+        # if 'sys.stdin' in line:
+            # tests['do_not_call_sys_stdin'] = False
+
+    correct = len([v for v in tests.values() if v])
+    return correct / len(tests)
 
 
 def safety_check(code_text):
