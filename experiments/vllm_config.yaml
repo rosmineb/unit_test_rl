@@ -1,0 +1,19 @@
+label_field: "verification_info"
+base_model_name: "Qwen/Qwen2.5-Coder-7B-Instruct"
+device_groups: 
+ - 1
+ - 2
+ - 3
+ - 4
+ - 5
+ - 6
+vllm_config:
+  gpu_memory_utilization: 0.9
+  max_model_len: 12288
+  max_num_batched_tokens: 98304
+  generation_num_copies: 1
+  temperature: 1.0
+  repetition_penalty: 0.0
+  max_tokens: 12288
+  tensor_parallel_size: 1
+  batch_size: 200
