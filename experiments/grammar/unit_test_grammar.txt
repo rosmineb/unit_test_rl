@@ -1,0 +1,10 @@
+root ::= intro codeBlock testBlock (end)*
+intro ::= [^`#]*
+newline ::= "\n"
+codeBlock ::= "```python" newline [^`]* "```" newline
+testBlock ::= testIntro (testLine)*
+testIntro ::= "### Unit Tests" newline newline
+notBracket ::= [^<]*
+testLine ::= "<test_input>" notBracket "</test_input><test_output>" notBracket "</test_output>" (newline)*
+end  ::= "<|im_end|>"
+

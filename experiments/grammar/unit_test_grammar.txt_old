@@ -1,0 +1,11 @@
+root ::= intro codeBlock testBlock (end)*
+intro ::= "Here is the Python code to solve the problem:" newline newline
+newline ::= "\n"
+codeBlock ::= "```python\n" pythonBlock "```" newline newline
+pythonBlock ::= (pythonLine)*
+pythonLine ::= [^\n]* newline
+testBlock ::= testIntro (testLine)*
+testIntro ::= "### Unit Tests" newline newline
+testLine ::= "<test_input>[^<]*</test_input><test_output>[^<]*</test_output>" (newline)*
+end  ::= "<|im_end|>"
+

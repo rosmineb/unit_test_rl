@@ -1,0 +1,12 @@
+Here is the Python code to solve the problem:
+
+```python
+def sum():
+    a, b = map(int, input().split())
+    return a + b
+```
+
+### Unit Tests
+
+<test_input>1 1</test_input><test_output>3</test_output>
+<test_input>-1 1</test_input><test_output>0</test_output><|im_end|>
