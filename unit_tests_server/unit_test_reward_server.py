@@ -39,7 +39,10 @@ import asyncio
 import multiprocessing
 from multiprocessing import Process, Queue
 from contextlib import contextmanager
-
+import subprocess
+import math
+import uuid
+import atexit
 
 # # Create a logger
 logger = logging.getLogger('rm_server_logger')
@@ -159,6 +162,7 @@ def check_answer(example):
                 return False
         else:
             try:
+                start_time = time.time()
                 result = subprocess.run(
                     ["python", "-c", code],
                     input=test_case['input'],
@@ -166,6 +170,18 @@ def check_answer(example):
                     timeout=10,
                     text=True  # This makes input and output work as strings
                 )
+                end_time = time.time()
+                print(f"Non-docker time taken: {end_time - start_time} seconds")
+                start_time = time.time()
+                result = subprocess.run(
+                    ["docker", "exec", "-i", CONTAINER_NAME, "python", "-c", code],
+                    input=test_case["input"],              # feed the test-case input to STDIN
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                end_time = time.time()
+                print(f"Docker time taken: {end_time - start_time} seconds")
             except Exception as e:
                 return False
 
@@ -564,9 +580,26 @@ def calculate_reward_with_timeout(args, code_text, label, result_queue):
 # Create the FastAPI application.
 app = FastAPI()
 
+IMAGE          = "python:3.12-slim"
+CONTAINER_NAME = f"pybox-{uuid.uuid4().hex[:8]}"
+def _ensure_container():
+    # Launch once; --detach keeps it alive, --rm cleans up after kill
+    subprocess.run(
+        [
+            "docker", "run", "-d", "--rm",
+            "--network", "none",          # still sandboxed
+            "--name", CONTAINER_NAME,
+            IMAGE, "sleep", "infinity"
+        ],
+        check=True
+    )
+    # Auto-remove on interpreter exit
+    atexit.register(lambda: subprocess.run(["docker", "kill", CONTAINER_NAME],
+                                        capture_output=True))
+
 @app.on_event("startup")
 async def startup_event():
-    pass
+    _ensure_container()
 
 def calculate_thinking_length_reward(args, query, reward, code_text):
     if args.thinking_length_weight:

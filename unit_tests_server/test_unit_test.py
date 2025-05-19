@@ -49,19 +49,20 @@ print(a * b)
 """
     
     pairs = [
-        # (correct_code, unit_test, unit_test_correct_output), # 1
+        (correct_code, unit_test, unit_test_correct_output), # 1
         # (incorrect_code, unit_test, unit_test_correct_output),  # 0
-        (incorrect_code, unit_test, unit_test_incorrect_output), # -1
+        # (incorrect_code, unit_test, unit_test_incorrect_output), # -1
     ]
 
-    labels = "{'test_cases': [{'type': 'stdin_stdout', 'input': '1\n2', 'output': '3'}]}"
+    labels = "{'test_cases': [{'type': 'stdin_stdout', 'input': '1\\n2', 'output': '3'}], " + "'reference_implementation': " + '"' + correct_code.replace("\n", "\\n") + '"}'
 
     for code, unit_test, unit_test_output in pairs:
+        # code = code.replace("\n", "\\n")
         unit_tests = f"<test_input>{unit_test}</test_input><test_output>{unit_test_output}</test_output>"
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "solve plz"},
-            {"role": "assistant", "content": f"<code>{code}</code>\n{unit_tests}"}
+            {"role": "assistant", "content": f"```python\n{code}```\n{unit_tests}"}
         ]
 
         tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-0.5B-Instruct")
